@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint (ruff + mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install ruff mypy
+
+      - name: Ruff check
+        run: ruff check api/src/ worker/src/
+
+      - name: Ruff format check
+        run: ruff format api/src/ worker/src/ --check
+
+      - name: Mypy
+        run: mypy api/src/ worker/src/ --ignore-missing-imports
+
+  test-api:
+    name: Test API (>80% coverage)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: calibration_db_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: api
+        run: pip install -e ".[dev]" aiosqlite
+
+      - name: Run tests
+        working-directory: api
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          REDIS_URL: redis://localhost:6379
+          USE_REDIS_QUEUE: "true"
+          DEV_MODE: "true"
+          APP_ENV: test
+        run: |
+          pytest tests/ \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=80 \
+            -v
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: api/coverage.xml
+          flags: api
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  test-worker:
+    name: Test Worker (>80% coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: worker
+        run: pip install -e ".[dev]"
+
+      - name: Run tests
+        working-directory: worker
+        env:
+          DEV_MODE: "true"
+          APP_ENV: test
+        run: |
+          pytest tests/ \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=80 \
+            -v
+
+  build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [lint, test-api, test-worker]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          target: production
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: calibration-api:${{ github.sha }}
+
+      - name: Build Worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./worker
+          target: production
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: calibration-worker:${{ github.sha }}
+
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.7.0'
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+      - name: Terraform init (no backend)
+        run: terraform init -backend=false
+        working-directory: terraform
+
+      - name: Terraform validate
+        run: terraform validate
+        working-directory: terraform
