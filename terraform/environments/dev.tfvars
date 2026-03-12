@@ -1,0 +1,13 @@
+environment         = "dev"
+location            = "northeurope"
+project             = "calibration"
+postgres_sku        = "Standard_B1ms"
+servicebus_sku      = "Basic"
+api_min_replicas    = 1
+api_max_replicas    = 5
+worker_min_replicas = 1
+worker_max_replicas = 3
+log_retention_days  = 30
+alert_email         = "ops@beamex.com"
+github_org          = "Aliipou"
+github_repo         = "cloud-calibration-platform"
