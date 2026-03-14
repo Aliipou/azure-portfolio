@@ -1,54 +1,34 @@
-.PHONY: dev test lint migrate tf-plan tf-apply tf-validate build clean
+.PHONY: run build test lint docker-up docker-down tidy tf-plan tf-apply tf-validate tf-fmt clean
 
-## ── Local Development ────────────────────────────────────────────────────────
+## ── Go ────────────────────────────────────────────────────────────────────────
 
-dev:
-	docker-compose up --build
+run:
+	go run ./cmd/api
 
-dev-bg:
-	docker-compose up --build -d
-
-down:
-	docker-compose down -v
-
-## ── Database ─────────────────────────────────────────────────────────────────
-
-migrate:
-	docker-compose run --rm api alembic upgrade head
-
-migrate-create:
-	docker-compose run --rm api alembic revision --autogenerate -m "$(MSG)"
-
-migrate-down:
-	docker-compose run --rm api alembic downgrade -1
-
-## ── Testing ──────────────────────────────────────────────────────────────────
+build:
+	go build -o bin/api ./cmd/api
 
 test:
-	docker-compose run --rm api pytest api/tests/ --cov=src --cov-report=term-missing --cov-report=xml -v
+	go test ./... -v -race -coverprofile=coverage.out
+	go tool cover -func=coverage.out
 
-test-worker:
-	docker-compose run --rm worker pytest worker/tests/ --cov=src --cov-report=term-missing -v
-
-test-all: test test-worker
-
-## ── Linting ──────────────────────────────────────────────────────────────────
+cover:
+	go test ./... -coverprofile=coverage.out
+	go tool cover -html=coverage.out -o coverage.html
 
 lint:
-	ruff check api/src/ worker/src/ --fix
-	ruff format api/src/ worker/src/
-	mypy api/src/ worker/src/ --strict --ignore-missing-imports
+	golangci-lint run
 
-lint-check:
-	ruff check api/src/ worker/src/
-	ruff format api/src/ worker/src/ --check
-	mypy api/src/ worker/src/ --strict --ignore-missing-imports
+tidy:
+	go mod tidy
 
 ## ── Docker ───────────────────────────────────────────────────────────────────
 
-build:
-	docker build -t calibration-api:local ./api
-	docker build -t calibration-worker:local ./worker
+docker-up:
+	docker compose up --build -d
+
+docker-down:
+	docker compose down -v
 
 ## ── Terraform ────────────────────────────────────────────────────────────────
 
@@ -70,16 +50,8 @@ tf-plan-prod:
 tf-fmt:
 	cd terraform && terraform fmt -recursive
 
-## ── Security ─────────────────────────────────────────────────────────────────
-
-sec-scan:
-	trivy fs . --severity HIGH,CRITICAL
-	pip-audit -r api/pyproject.toml
-
 ## ── Cleanup ──────────────────────────────────────────────────────────────────
 
 clean:
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
-	find . -name "*.pyc" -delete
+	rm -rf bin/
 	rm -f terraform/tfplan.*

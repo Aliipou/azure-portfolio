@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ## Python
 __pycache__/
 *.py[cod]
@@ -38,3 +39,50 @@ coverage.xml
 ## OS
 .DS_Store
 Thumbs.db
+=======
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+cloud-calibration
+/bin/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+coverage.out
+coverage.html
+
+# Dependency directory
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+dist/
+build/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+>>>>>>> 9231af2 (chore: scaffold cloud-calibration Go module for ISO 17025 platform)

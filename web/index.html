@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cloud Calibration Platform</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; }
+    header { background: #1e293b; padding: 1rem 2rem; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+    header h1 { font-size: 1.25rem; font-weight: 700; color: #2dd4bf; }
+    .header-meta { display: flex; align-items: center; gap: 1rem; font-size: 0.8rem; color: #64748b; }
+    .header-meta .tenant { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 0.25rem 0.75rem; color: #94a3b8; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #34d399; margin-right: 0.4rem; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .stat-card { background: #1e293b; border-radius: 10px; padding: 1.25rem; border: 1px solid #334155; }
+    .stat-card .label { font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; }
+    .stat-card .value { font-size: 2.2rem; font-weight: 700; margin-top: 0.25rem; line-height: 1; }
+    .stat-card .sub { font-size: 0.75rem; color: #64748b; margin-top: 0.35rem; }
+    .teal  { color: #2dd4bf; }
+    .green { color: #34d399; }
+    .yellow { color: #fbbf24; }
+    .red   { color: #f87171; }
+    .blue  { color: #60a5fa; }
+    .section { background: #1e293b; border-radius: 10px; padding: 1.5rem; border: 1px solid #334155; margin-bottom: 1.5rem; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .section h2 { font-size: 1rem; font-weight: 600; color: #cbd5e1; }
+    .refresh-info { font-size: 0.75rem; color: #475569; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; color: #64748b; font-weight: 500; border-bottom: 1px solid #334155; white-space: nowrap; }
+    td { padding: 0.625rem 0.75rem; border-bottom: 1px solid #1a2540; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #263447; }
+    .badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
+    .badge-pass    { background: #064e3b; color: #34d399; }
+    .badge-fail    { background: #3f1515; color: #f87171; }
+    .badge-pending { background: #1c3a5f; color: #60a5fa; }
+    .badge-active   { background: #064e3b; color: #34d399; }
+    .badge-inactive { background: #1e293b; color: #64748b; border: 1px solid #334155; }
+    .badge-pressure    { background: #1c3a5f; color: #60a5fa; }
+    .badge-temperature { background: #3b1f6e; color: #c084fc; }
+    .badge-electrical  { background: #78350f; color: #fbbf24; }
+    .badge-flow        { background: #064e3b; color: #34d399; }
+    .empty { color: #475569; font-size: 0.85rem; text-align: center; padding: 2rem; }
+    .err-banner { background: #3f1515; border: 1px solid #7f1d1d; color: #f87171; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.85rem; display: none; }
+    .pass-bar { height: 6px; border-radius: 3px; background: #1a2540; overflow: hidden; margin-top: 0.5rem; }
+    .pass-bar-fill { height: 100%; border-radius: 3px; background: #34d399; transition: width 0.4s; }
+    @media(max-width: 768px) {
+      header { flex-direction: column; align-items: flex-start; }
+      .container { padding: 1rem; }
+      th:nth-child(n+4), td:nth-child(n+4) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Cloud Calibration Platform</h1>
+  <div class="header-meta">
+    <span><span class="status-dot"></span>Live</span>
+    <span class="tenant">Tenant: <strong id="tenantLabel">demo</strong></span>
+    <span id="lastRefresh">—</span>
+  </div>
+</header>
+
+<div class="container">
+  <div id="errBanner" class="err-banner"></div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="label">Total Devices</div>
+      <div class="value teal" id="statDevices">—</div>
+      <div class="sub">registered instruments</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Total Calibrations</div>
+      <div class="value blue" id="statRecords">—</div>
+      <div class="sub">records submitted</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Pass Rate</div>
+      <div class="value green" id="statPassRate">—</div>
+      <div class="pass-bar"><div class="pass-bar-fill" id="passBarFill" style="width:0%"></div></div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Recent Failures</div>
+      <div class="value" id="statFails">—</div>
+      <div class="sub">last 7 days</div>
+    </div>
+  </div>
+
+  <!-- Device Table -->
+  <div class="section">
+    <div class="section-header">
+      <h2>Devices</h2>
+      <span class="refresh-info" id="deviceCount"></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Serial</th>
+          <th>Type</th>
+          <th>Location</th>
+          <th>Tolerance</th>
+          <th>Last Calibrated</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="deviceTableBody">
+        <tr><td colspan="7" class="empty">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Recent Calibrations -->
+  <div class="section">
+    <div class="section-header">
+      <h2>Recent Calibrations</h2>
+      <span class="refresh-info">Auto-refresh every 10s</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Device ID</th>
+          <th>Operator</th>
+          <th>Result</th>
+          <th>Pass / Fail</th>
+          <th>Measurements</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody id="calTableBody">
+        <tr><td colspan="6" class="empty">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const TENANT = 'demo';
+  const ROLE   = 'admin';
+  const HEADERS = { 'X-Tenant-ID': TENANT, 'X-User-Role': ROLE };
+
+  document.getElementById('tenantLabel').textContent = TENANT;
+
+  function fmt(v) { return v === null || v === undefined ? '—' : v; }
+
+  function fmtDate(s) {
+    if (!s) return '—';
+    const d = new Date(s);
+    return d.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  function typeBadge(t) {
+    return `<span class="badge badge-${t}">${t}</span>`;
+  }
+
+  function passBadge(pass) {
+    return pass
+      ? '<span class="badge badge-pass">PASS</span>'
+      : '<span class="badge badge-fail">FAIL</span>';
+  }
+
+  function statusBadge(active) {
+    return active
+      ? '<span class="badge badge-active">active</span>'
+      : '<span class="badge badge-inactive">inactive</span>';
+  }
+
+  function showError(msg) {
+    const b = document.getElementById('errBanner');
+    b.textContent = 'API error: ' + msg;
+    b.style.display = 'block';
+    setTimeout(() => { b.style.display = 'none'; }, 6000);
+  }
+
+  async function fetchJSON(url) {
+    const r = await fetch(url, { headers: HEADERS });
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} (${url})`);
+    return r.json();
+  }
+
+  async function loadSummary() {
+    try {
+      const s = await fetchJSON('/api/v1/analytics/summary');
+      document.getElementById('statDevices').textContent  = fmt(s.total_devices);
+      document.getElementById('statRecords').textContent  = fmt(s.total_records);
+      const pr = typeof s.pass_rate === 'number' ? s.pass_rate.toFixed(1) + '%' : '—';
+      const el = document.getElementById('statPassRate');
+      el.textContent = pr;
+      el.className = 'value ' + (s.pass_rate >= 90 ? 'green' : s.pass_rate >= 70 ? 'yellow' : 'red');
+      document.getElementById('passBarFill').style.width = (s.pass_rate || 0) + '%';
+      const failEl = document.getElementById('statFails');
+      failEl.textContent = fmt(s.recent_fails);
+      failEl.className = 'value ' + (s.recent_fails > 0 ? 'red' : 'green');
+    } catch(e) { showError(e.message); }
+  }
+
+  async function loadDevices() {
+    try {
+      const data = await fetchJSON('/api/v1/devices?limit=100');
+      const tbody = document.getElementById('deviceTableBody');
+      const devices = data.devices || [];
+      document.getElementById('deviceCount').textContent = `${devices.length} of ${data.total} shown`;
+      if (!devices.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">No devices registered yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = devices.map(d => `
+        <tr>
+          <td><strong>${d.name}</strong></td>
+          <td style="font-family:monospace;font-size:0.8rem;color:#94a3b8">${d.serial_number}</td>
+          <td>${typeBadge(d.device_type)}</td>
+          <td>${d.location}</td>
+          <td style="color:#94a3b8">&plusmn;${d.tolerance_pct}%</td>
+          <td style="color:#64748b">${fmtDate(d.last_calibrated_at)}</td>
+          <td>${statusBadge(d.is_active)}</td>
+        </tr>
+      `).join('');
+    } catch(e) { showError(e.message); }
+  }
+
+  async function loadCalibrations() {
+    try {
+      const data = await fetchJSON('/api/v1/calibrations?limit=50');
+      const tbody = document.getElementById('calTableBody');
+      const records = data.records || [];
+      if (!records.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No calibration records yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = records.map(r => `
+        <tr>
+          <td style="font-family:monospace;font-size:0.78rem;color:#94a3b8">${r.device_id.slice(0,8)}…</td>
+          <td>${r.operator_name}</td>
+          <td>${passBadge(r.overall_pass)}</td>
+          <td style="font-size:0.8rem">
+            <span style="color:#34d399">${r.pass_count} pass</span>
+            <span style="color:#475569;margin:0 0.25rem">/</span>
+            <span style="color:#f87171">${r.fail_count} fail</span>
+          </td>
+          <td style="color:#64748b">${(r.measurements || []).length}</td>
+          <td style="color:#64748b">${fmtDate(r.measured_at)}</td>
+        </tr>
+      `).join('');
+    } catch(e) { showError(e.message); }
+  }
+
+  async function refresh() {
+    await Promise.all([loadSummary(), loadDevices(), loadCalibrations()]);
+    document.getElementById('lastRefresh').textContent =
+      'Updated ' + new Date().toLocaleTimeString('en-GB');
+  }
+
+  refresh();
+  setInterval(refresh, 10000);
+</script>
+</body>
+</html>
