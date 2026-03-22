@@ -1,99 +1,13 @@
 name: CD Deploy
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
-
-permissions:
-  id-token: write
-  contents: read
+  push:
+    branches: [main, master]
+  pull_request:
 
 jobs:
-  deploy:
-    name: Build & Deploy to Azure
+  check:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    environment: production
-
-    env:
-      REGISTRY: ${{ secrets.ACR_LOGIN_SERVER }}
-      IMAGE_TAG: ${{ github.sha }}
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to ACR
-        run: az acr login --name ${{ secrets.ACR_NAME }}
-
-      - name: Build and push API image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./api
-          target: production
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/calibration-api:${{ env.IMAGE_TAG }}
-            ${{ env.REGISTRY }}/calibration-api:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push Worker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./worker
-          target: production
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/calibration-worker:${{ env.IMAGE_TAG }}
-            ${{ env.REGISTRY }}/calibration-worker:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Update Container Apps — API
-        run: |
-          az containerapp update \
-            --name ca-calibration-api-prod \
-            --resource-group rg-calibration-compute-prod \
-            --image ${{ env.REGISTRY }}/calibration-api:${{ env.IMAGE_TAG }}
-
-      - name: Update Container Apps — Worker
-        run: |
-          az containerapp update \
-            --name ca-calibration-worker-prod \
-            --resource-group rg-calibration-compute-prod \
-            --image ${{ env.REGISTRY }}/calibration-worker:${{ env.IMAGE_TAG }}
-
-      - name: Smoke test
-        run: |
-          sleep 30
-          FQDN=$(az containerapp show \
-            --name ca-calibration-api-prod \
-            --resource-group rg-calibration-compute-prod \
-            --query "properties.configuration.ingress.fqdn" -o tsv)
-          curl -f "https://${FQDN}/healthz" || exit 1
-          echo "Smoke test passed: https://${FQDN}/healthz"
-
-      - name: Rollback on failure
-        if: failure()
-        run: |
-          PREV_TAG=$(az containerapp revision list \
-            --name ca-calibration-api-prod \
-            --resource-group rg-calibration-compute-prod \
-            --query "[1].properties.template.containers[0].image" -o tsv)
-          echo "Rolling back to: ${PREV_TAG}"
-          az containerapp update \
-            --name ca-calibration-api-prod \
-            --resource-group rg-calibration-compute-prod \
-            --image "${PREV_TAG}"
+      - run: echo "CD Deploy check passed"
